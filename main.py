@@ -3,11 +3,12 @@ from discord.ext import commands, tasks
 import os, random, asyncio, time, json
 from flask import Flask
 from threading import Thread
+from datetime import datetime
 
-# --- 🌐 نظام البقاء متصلاً (Keep Alive) ---
+# --- 🌐 تشغيل السيرفر (Keep Alive) ---
 app = Flask('')
 @app.route('/')
-def home(): return "ميرا المتطورة جاهزة.. 🟢"
+def home(): return "Mira Advanced System: Online 🟢"
 def run(): app.run(host='0.0.0.0', port=8080)
 def keep_alive(): Thread(target=run).start()
 
@@ -15,20 +16,21 @@ intents = discord.Intents.default()
 intents.message_content = True 
 bot = commands.Bot(command_prefix='', intents=intents, help_command=None)
 
-# --- 📁 نظام قاعدة البيانات الدائمة (JSON) ---
+# --- 📁 قاعدة البيانات ---
 DB_FILE = "database.json"
+ID_CHANNEL_STOCKS = 123456789012345678  # ⚠️ ضع هنا آيدي القناة التي ترسل فيها الأسهم
 
 def load_db():
     if os.path.exists(DB_FILE):
         try:
             with open(DB_FILE, "r") as f:
                 data = json.load(f)
-                # التأكد من وجود الأقسام الأساسية
-                for key in ['cash', 'bank', 'items']:
-                    if key not in data: data[key] = {}
+                keys = ['cash', 'bank', 'items', 'marry', 'stocks']
+                for k in keys:
+                    if k not in data: data[k] = {}
                 return data
-        except: return {'cash': {}, 'bank': {}, 'items': {}}
-    return {'cash': {}, 'bank': {}, 'items': {}}
+        except: return {'cash': {}, 'bank': {}, 'items': {}, 'marry': {}, 'stocks': {}}
+    return {'cash': {}, 'bank': {}, 'items': {}, 'marry': {}, 'stocks': {}}
 
 def save_db():
     with open(DB_FILE, "w") as f:
@@ -36,178 +38,158 @@ def save_db():
 
 db = load_db()
 
-# --- 🛒 قائمة عناصر المتجر ---
-# يمكنك إضافة أو تعديل العناصر هنا بسهولة
-STORE_ITEMS = {
-    "رول": {"price": 50000, "desc": "رتبة مميزة في السيرفر", "emoji": "🎭"},
-    "حماية": {"price": 10000, "desc": "تمنع الزرف لمدة معينة", "emoji": "🛡️"},
-    "تذكرة": {"price": 5000, "desc": "تذكرة سحب على جوائز", "emoji": "🎫"},
-    "سيارة": {"price": 150000, "desc": "للاستعراض في البروفايل", "emoji": "🏎️"}
-}
-
-# --- ⚙️ دوال المساعدة لضمان الدقة ---
-def get_val(uid, cat):
+# --- ⚙️ دوال المساعدة ---
+def get_val(uid, cat, default=0):
     uid = str(uid)
-    if uid not in db[cat]: 
-        if cat == 'items': db[cat][uid] = []
-        else: db[cat][uid] = 0
+    if uid not in db[cat]: db[cat][uid] = default
     return db[cat][uid]
 
-def update_val(uid, cat, amt): 
+def update_val(uid, cat, amt):
     uid = str(uid)
     if uid not in db[cat]: db[cat][uid] = 0
     db[cat][uid] += amt
     save_db()
 
-def get_balance_msg(uid):
-    cash = get_val(uid, 'cash')
-    bank = get_val(uid, 'bank')
-    return f"\n\n💰 **تحديث المحفظة:**\n💵 كاش: `{cash:,}` ريال\n🏧 بنك: `{bank:,}` ريال"
+# --- 📈 نظام الأسهم المطور ---
+STOCKS = {
+    "ارامكو": {"price": 100, "trend": "➖"},
+    "تيسلا": {"price": 250, "trend": "➖"},
+    "سولانا": {"price": 150, "trend": "➖"},
+    "الراجحي": {"price": 85, "trend": "➖"}
+}
 
-@bot.event
-async def on_ready():
-    print(f"✅ تم تشغيل {bot.user.name} - البيانات محفوظة بنجاح")
+@tasks.loop(minutes=10)
+async def stock_market_task():
+    channel = bot.get_channel(ID_CHANNEL_STOCKS)
+    if not channel: return
 
-# --- 📜 الأوامر العامة ---
-@bot.command(name='الأوامر')
-async def help_menu(ctx):
-    guide = (
-        "🎮 **دليل ميرا الاقتصادي الشامل** 🇸🇦\n\n"
-        "💰 **الاقتصاد والزرف:**\n"
-        "• `عمل` 💼: الحصول على راتب.\n"
-        "• `زرف` 🥷: رد على رسالة الشخص لزرفه.\n"
-        "• `تحويل (المبلغ)` 💸: رد على رسالة لتحويل كاش.\n\n"
-        "🛒 **المتجر والامتلاك:**\n"
-        "• `المتجر` 🛍️: عرض الأغراض المتاحة.\n"
-        "• `شراء (اسم الغرض)` 💳: شراء منتج من المتجر.\n"
-        "• `اغراضي` 📦: عرض ما تملكه في حقيبتك.\n\n"
-        "🏧 **البنك والحماية:**\n"
-        "• `إيداع (المبلغ)` 🏦 | `سحب (المبلغ)` 🏧\n"
-        "• `رصيدي` 💳 | `توب 10` 💎"
-    )
-    await ctx.reply(guide)
+    update_text = "🔔 **تحديث مباشر لسوق الأسهم** 📈\n"
+    update_text += f"📅 `{datetime.now().strftime('%Y-%m-%d %H:%M')}`\n"
+    update_text += "━━━━━━━━━━━━━━━━━━\n"
 
-# --- 🛒 نظام المتجر (The Shop System) ---
-@bot.command(name='المتجر')
-async def shop(ctx):
-    embed_msg = "🛒 **متجر ميرا الاقتصادي**\n"
-    embed_msg += "————————————————\n"
-    for item, info in STORE_ITEMS.items():
-        embed_msg += f"{info['emoji']} **{item}** — `{info['price']:,}` ريال\n╰ {info['desc']}\n\n"
-    embed_msg += "💡 للشراء اكتب: `شراء اسم الغرض`"
-    await ctx.reply(embed_msg)
+    for s in STOCKS:
+        old_price = STOCKS[s]["price"]
+        change = random.randint(-20, 25)
+        new_price = max(10, old_price + change)
+        
+        trend = "🔼" if new_price > old_price else "🔽"
+        STOCKS[s]["price"] = new_price
+        STOCKS[s]["trend"] = trend
+        
+        update_text += f"{trend} **{s}**: `{new_price:,}` ريال\n"
 
-@bot.command(name='شراء')
-async def buy(ctx, *, item_name: str):
-    if item_name not in STORE_ITEMS:
-        return await ctx.reply("❌ هذا الغرض غير موجود في المتجر! تأكد من الاسم.")
+    update_text += "━━━━━━━━━━━━━━━━━━\n"
+    update_text += "⌛ التحديث القادم بعد: `10 دقائق`"
     
-    cost = STORE_ITEMS[item_name]['price']
-    user_cash = get_val(ctx.author.id, 'cash')
-    
-    if user_cash < cost:
-        return await ctx.reply(f"❌ ما عندك كاش كافي! سعره `{cost:,}` ريال.")
-    
-    # خصم المبلغ
-    update_val(ctx.author.id, 'cash', -cost)
-    
-    # إضافة الغرض للحقيبة
-    uid = str(ctx.author.id)
-    if uid not in db['items']: db['items'][uid] = []
-    db['items'][uid].append(item_name)
-    save_db()
-    
-    await ctx.reply(f"✅ مبروك! شريت **{item_name}** {STORE_ITEMS[item_name]['emoji']} بنجاح.{get_balance_msg(ctx.author.id)}")
+    await channel.send(update_text)
 
-@bot.command(name='اغراضي')
-async def my_items(ctx):
-    items = get_val(ctx.author.id, 'items')
-    if not items:
-        return await ctx.reply("📦 حقيبتك فاضية.. روح اشتغل واشترِ من المتجر!")
+# --- 💍 نظام الزواج بمهر ---
+@bot.command(name='تزوجني')
+async def marry(ctx, dowry: int):
+    if not ctx.message.reference:
+        return await ctx.reply("⚠️ | لازم ترد على رسالة الشخص اللي تبي تتزوجه!")
     
-    msg = "📦 **حقيبة أغراضك:**\n"
-    for item in set(items):
-        count = items.count(item)
-        msg += f"• {STORE_ITEMS[item]['emoji']} {item} (العدد: {count})\n"
-    await ctx.reply(msg)
-
-# --- 💳 البنك والاقتصاد ---
-@bot.command(name='رصيدي')
-async def balance(ctx):
-    await ctx.reply(get_balance_msg(ctx.author.id))
-
-@bot.command(name='إيداع')
-async def deposit(ctx, amt: int):
-    if amt <= 0: return await ctx.reply("❌ المبلغ لازم يكون أكبر من صفر!")
-    if get_val(ctx.author.id, 'cash') < amt: return await ctx.reply("❌ ما عندك كاش يكفي!")
+    target = (await ctx.channel.fetch_message(ctx.message.reference.message_id)).author
+    if target == ctx.author: return await ctx.reply("🙅‍♂️ | ما تقدر تتزوج نفسك!")
     
-    update_val(ctx.author.id, 'cash', -amt)
-    update_val(ctx.author.id, 'bank', amt)
-    await ctx.reply(f"✅ تم إيداع **{amt:,}** ريال في البنك! 🏦{get_balance_msg(ctx.author.id)}")
-
-@bot.command(name='سحب')
-async def withdraw(ctx, amt: int):
-    if amt <= 0: return await ctx.reply("❌ المبلغ لازم يكون أكبر من صفر!")
-    if get_val(ctx.author.id, 'bank') < amt: return await ctx.reply("❌ بنكك ما فيه هذا المبلغ!")
+    if str(ctx.author.id) in db['marry']: return await ctx.reply("❌ | أنت متزوج بالفعل!")
+    if str(target.id) in db['marry']: return await ctx.reply("❌ | هذا الشخص متزوج!")
     
-    update_val(ctx.author.id, 'bank', -amt)
-    update_val(ctx.author.id, 'cash', amt)
-    await ctx.reply(f"🏧 تم سحب **{amt:,}** ريال لمحفظتك!{get_balance_msg(ctx.author.id)}")
+    if get_val(ctx.author.id, 'cash') < dowry:
+        return await ctx.reply(f"💸 | كاشك ما يغطي المهر المطلوب (`{dowry:,}`)")
 
-@bot.command(name='عمل')
-@commands.cooldown(1, 300, commands.BucketType.user)
-async def work(ctx):
-    salary = random.randint(800, 1500)
-    update_val(ctx.author.id, 'cash', salary)
-    await ctx.reply(f"💼 اشتغلت وجبت راتب **{salary:,}** ريال! كفو.{get_balance_msg(ctx.author.id)}")
+    await ctx.send(f"👰 **طلب زواج**\n{target.mention}، هل تقبل الزواج من {ctx.author.mention} بمهر قدره `{dowry:,}`؟\n\n*(اكتب: **أقبل** أو **أرفض** خلال 60 ثانية)*")
 
-@bot.command(name='توب')
-async def top_rich(ctx, limit: int = 10):
-    sorted_data = sorted(db['cash'].items(), key=lambda x: x[1], reverse=True)[:limit]
-    msg = f"🏆 **أغنى {limit} هوامير بالسيرفر:**\n\n"
-    for i, (uid, bal) in enumerate(sorted_data):
-        msg += f"{i+1}. <@{uid}> — **{bal:,} ريال** 💰\n"
-    await ctx.reply(msg)
+    def check(m): return m.author == target and m.content in ["أقبل", "أرفض"]
+    try:
+        msg = await bot.wait_for('message', check=check, timeout=60.0)
+        if msg.content == "أقبل":
+            update_val(ctx.author.id, 'cash', -dowry)
+            update_val(target.id, 'cash', dowry)
+            db['marry'][str(ctx.author.id)] = str(target.id)
+            db['marry'][str(target.id)] = str(ctx.author.id)
+            save_db()
+            await ctx.send(f"🎊 **تم الزواج بنجاح!**\nألف مبروك لـ {ctx.author.mention} و {target.mention} ❤️")
+        else:
+            await ctx.send(f"💔 | {target.mention} رفض الزواج.. معوض خير.")
+    except asyncio.TimeoutError:
+        await ctx.send("⌛ | انتهى الوقت ولم يتم الرد.")
 
-# --- 🥷 نظام الردود (الزرف والتحويل) ---
+# --- 🥷 نظام الرد الشامل (زرف، تحويل، هبة) ---
 @bot.event
 async def on_message(message):
     if message.author.bot: return
     
-    # تحويل بالرد
-    if message.content.startswith("تحويل") and message.reference:
-        try:
-            amt = int(''.join(filter(str.isdigit, message.content)))
-            target = (await message.channel.fetch_message(message.reference.message_id)).author
-            if target == message.author: return
-            if get_val(message.author.id, 'cash') < amt: return await message.reply("❌ كاشك ما يكفي!")
-            
-            update_val(message.author.id, 'cash', -amt)
-            update_val(target.id, 'cash', amt)
-            await message.reply(f"✅ تم تحويل **{amt:,}** لـ {target.mention}!{get_balance_msg(message.author.id)}")
-        except: pass
+    # التعامل مع الردود
+    if message.reference:
+        ref_msg = await message.channel.fetch_message(message.reference.message_id)
+        target = ref_msg.author
+        content = message.content
 
-    # زرف بالرد
-    elif message.content == "زرف" and message.reference:
-        target = (await message.channel.fetch_message(message.reference.message_id)).author
-        if target == message.author: return
-        
-        if random.randint(1, 100) > 50:
-            stolen = random.randint(100, 600)
-            update_val(target.id, 'cash', -stolen)
-            update_val(message.author.id, 'cash', stolen)
-            res = f"🥷 زرفت من {target.mention} مبلغ **{stolen} ريال**! 😎"
-        else:
-            update_val(message.author.id, 'cash', -400)
-            res = "🚔 انقفطت يا خايب! دفعت غرامة 400 ريال! 🚨"
-        await message.reply(f"{res}{get_balance_msg(message.author.id)}")
-            
+        if content == "زرف" and target != message.author:
+            if random.random() > 0.4:
+                stolen = random.randint(300, 1200)
+                update_val(target.id, 'cash', -stolen)
+                update_val(message.author.id, 'cash', stolen)
+                await message.reply(f"🥷 **عملية ناجحة!** زرفت من {target.mention} مبلغ `{stolen:,}` ريال.")
+            else:
+                update_val(message.author.id, 'cash', -600)
+                await message.reply("🚔 **كشفتك الشرطة!** دفعت غرامة `600` ريال.")
+
+        elif content.startswith("تحويل"):
+            try:
+                amt = int(''.join(filter(str.isdigit, content)))
+                if get_val(message.author.id, 'cash') >= amt:
+                    update_val(message.author.id, 'cash', -amt)
+                    update_val(target.id, 'cash', amt)
+                    await message.reply(f"✅ تم تحويل `{amt:,}` ريال إلى {target.mention}.")
+            except: pass
+
     await bot.process_commands(message)
+
+# --- 💳 الأوامر الأساسية ---
+@bot.command(name='رصيدي')
+async def balance(ctx):
+    user_id = str(ctx.author.id)
+    cash = get_val(user_id, 'cash')
+    bank = get_val(user_id, 'bank')
+    status = "عزوبي 🍃"
+    if user_id in db['marry']:
+        p_id = db['marry'][user_id]
+        status = f"متزوج من <@{p_id}> ❤️"
+
+    msg = f"👤 **معلوماتك الاقتصادية:**\n"
+    msg += "━━━━━━━━━━━━━━\n"
+    msg += f"💵 **الكاش:** `{cash:,}` ريال\n"
+    msg += f"🏧 **البنك:** `{bank:,}` ريال\n"
+    msg += f"💍 **الحالة:** {status}\n"
+    msg += "━━━━━━━━━━━━━━"
+    await ctx.reply(msg)
+
+@bot.command(name='عمل')
+@commands.cooldown(1, 300, commands.BucketType.user)
+async def work(ctx):
+    salary = random.randint(1000, 2500)
+    update_val(ctx.author.id, 'cash', salary)
+    await ctx.reply(f"👷‍♂️ | اشتغلت وجبت راتب كفو: `{salary:,}` ريال.")
+
+@bot.command(name='الأسهم')
+async def list_stocks(ctx):
+    msg = "📊 **أسعار الأسهم الحالية:**\n━━━━━━━━━━━━━━\n"
+    for s, v in STOCKS.items():
+        msg += f"{v['trend']} **{s}**: `{v['price']:,}` ريال\n"
+    msg += "━━━━━━━━━━━━━━\n💡 التحديث تلقائي كل 10 دقائق."
+    await ctx.reply(msg)
+
+@bot.event
+async def on_ready():
+    print(f"Mira Bot is Online ✅")
+    stock_market_task.start()
 
 @bot.event
 async def on_command_error(ctx, error):
     if isinstance(error, commands.CommandOnCooldown):
-        await ctx.reply(f"⏳ اصبر يا وحش باقي لك **{int(error.retry_after)} ثانية**.")
+        await ctx.reply(f"⏳ | اهدأ قليلاً! انتظر `{int(error.retry_after)}` ثانية.")
 
 keep_alive()
 bot.run(os.environ.get('TOKEN'))
