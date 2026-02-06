@@ -25,7 +25,7 @@ db = {
     'cash': {},      
     'stocks': {},
     'animals': {},
-    'married_to': {},
+    'team_with': {}, # تم تغيير المسمى من متزوج إلى فريق
     'last_stock_update': time.time()
 }
 
@@ -56,27 +56,25 @@ async def on_ready():
     if not change_stock_price.is_running():
         change_stock_price.start()
 
-# --- شرح اللعبة (الأوامر) ---
+# --- الأوامر المحدثة ---
 @bot.command(name='الأوامر')
 async def help_menu(ctx):
     help_text = (
         "🎮 **مرحباً بك في عالم ميرا الاقتصادي!**\n\n"
-        "💰 **كيف تبدأ؟**\n"
-        "• اكتب `عمل`: ستحصل على وظيفة براتب عشوائي (مثل مبرمج 💻 بـ 1500 ريال). يمكنك العمل كل 10 دقائق.\n\n"
-        "📈 **سوق الاستثمار:**\n"
-        "• اكتب `الأسهم`: لمعرفة السعر الحالي ومتى يتغير.\n"
-        "• اكتب `شراء سهم`: لاستبدال كاشك بأسهم عندما يكون السعر رخيصاً.\n"
-        "• اكتب `بيع سهم`: لبيع أسهمك عندما يرتفع السعر وتحقيق أرباح.\n\n"
-        "💍 **نظام الشراكة (الزواج):**\n"
-        "• اكتب `زواج @الشخص (المهر)`: لطلب الزواج. المزايا؟ في المسابقات، الفوز لأحدكما يعني نقطة للطرفين! (تيم واحد).\n\n"
+        "💰 **الاقتصاد:**\n"
+        "• `عمل`: للحصول على راتب وظيفة.\n"
+        "• `الأسهم`: لعرض سعر السوق.\n"
+        "• `شراء سهم` / `بيع سهم`: للتداول.\n\n"
+        "👥 **نظام الفريق:**\n"
+        "• `فريق @الشخص (المبلغ)`: لدعوة شخص لفريقك مقابل مبلغ مالي. (الفوز في المسابقات مشترك!).\n\n"
         "🐾 **المسابقات:**\n"
-        "• اكتب `حيوانات`: أسرع واحد يكتب اسم حيوان يبدأ بالحرف المطلوب يفوز بنقطة.\n\n"
+        "• `حيوانات`: أسرع واحد يكتب اسم حيوان يفوز.\n\n"
         "💳 **المحفظة:**\n"
-        "• اكتب `رصيدي`: لمشاهدة أموالك، أسهمك، واسم شريك حياتك."
+        "• `رصيدي`: عرض الكاش، الأسهم، وشريكك في الفريق."
     )
     await ctx.reply(help_text)
 
-# --- نظام العمل المطور ---
+# --- العمل ---
 @bot.command(name='عمل')
 @commands.cooldown(1, 600, commands.BucketType.user)
 async def work(ctx):
@@ -85,37 +83,37 @@ async def work(ctx):
     update_val(ctx.author.id, 'cash', salary)
     await ctx.reply(f"💼 اشتغلت **{job['name']}** وعطوك راتب **{salary} ريال** 💵")
 
-# --- نظام الأسهم ---
+# --- الأسهم ---
 @bot.command(name='الأسهم')
 async def show_stocks(ctx):
     remaining = 600 - (time.time() - db['last_stock_update'])
     m, s = divmod(int(remaining), 60)
-    await ctx.reply(f"📊 السعر الحالي: **{stock_price} ريال**\n⏳ تحديث السعر بعد: **{m} دقيقة و {s} ثانية**")
+    await ctx.reply(f"📊 سعر السهم: **{stock_price} ريال**\n⏳ التحديث القادم: **{m}د و {s}ث**")
 
 @bot.command(name='شراء')
 async def buy(ctx, item=""):
     if item != "سهم": return await ctx.reply("اكتب: `شراء سهم`")
-    if get_val(ctx.author.id, 'cash') < stock_price: return await ctx.reply("فلوسك ما تكفي!")
+    if get_val(ctx.author.id, 'cash') < stock_price: return await ctx.reply("محفظتك فارغة!")
     update_val(ctx.author.id, 'cash', -stock_price)
     update_val(ctx.author.id, 'stocks', 1)
-    await ctx.reply(f"✅ اشتريت سهم! رصيدك الحالي: {get_val(ctx.author.id, 'stocks')} سهم.")
+    await ctx.reply(f"✅ تم الشراء! تملك الآن: {get_val(ctx.author.id, 'stocks')} سهم.")
 
 @bot.command(name='بيع')
 async def sell(ctx, item=""):
     if item != "سهم": return await ctx.reply("اكتب: `بيع سهم`")
-    if get_val(ctx.author.id, 'stocks') < 1: return await ctx.reply("ما عندك أسهم!")
+    if get_val(ctx.author.id, 'stocks') < 1: return await ctx.reply("لا تملك أسهم لبيعها!")
     update_val(ctx.author.id, 'stocks', -1)
     update_val(ctx.author.id, 'cash', stock_price)
     await ctx.reply(f"✅ بعت سهم بـ {stock_price}! كاشك الآن: {get_val(ctx.author.id, 'cash')}")
 
-# --- نظام الزواج ---
-@bot.command(name='زواج')
-async def marry(ctx, member: discord.Member = None, amount: int = 0):
-    if not member or amount <= 0: return await ctx.reply("اكتب: `زواج @الشخص (المهر)`")
-    if str(ctx.author.id) in db['married_to']: return await ctx.reply("أنت متزوج أصلاً!")
-    if get_val(ctx.author.id, 'cash') < amount: return await ctx.reply("مهرك ناقص!")
+# --- نظام الفريق (بديل الزواج) ---
+@bot.command(name='فريق')
+async def join_team(ctx, member: discord.Member = None, amount: int = 0):
+    if not member or amount <= 0: return await ctx.reply("اكتب: `فريق @الشخص (المبلغ)`")
+    if str(ctx.author.id) in db['team_with']: return await ctx.reply("أنت بالفعل في فريق!")
+    if get_val(ctx.author.id, 'cash') < amount: return await ctx.reply("ليس لديك هذا المبلغ لدعم الفريق!")
 
-    await ctx.send(f"💍 {member.mention}، تقبل بـ {ctx.author.mention} مهر {amount}؟ (أقبل/أرفض)")
+    await ctx.send(f"🤝 {member.mention}، هل تقبل الانضمام لفريق {ctx.author.mention} مقابل {amount} ريال؟ (أقبل/أرفض)")
     def check(m): return m.author == member and m.channel == ctx.channel and m.content in ["أقبل", "أرفض"]
     
     try:
@@ -123,11 +121,11 @@ async def marry(ctx, member: discord.Member = None, amount: int = 0):
         if msg.content == "أقبل":
             update_val(ctx.author.id, 'cash', -amount)
             update_val(member.id, 'cash', amount)
-            db['married_to'][str(ctx.author.id)] = member.id
-            db['married_to'][str(member.id)] = ctx.author.id
-            await ctx.send("🎊 تم الزواج! صرتوا تيم رسمي!")
-        else: await ctx.send("رفض المهر.. 💔")
-    except: await ctx.send("انتهى الوقت!")
+            db['team_with'][str(ctx.author.id)] = member.id
+            db['team_with'][str(member.id)] = ctx.author.id
+            await ctx.send("🔥 تم تكوين الفريق بنجاح! الآن نقاط المسابقات مشتركة!")
+        else: await ctx.send("تم رفض الطلب.. ❌")
+    except: await ctx.send("انتهى وقت الطلب!")
 
 # --- المسابقات ---
 @bot.command(name='حيوانات')
@@ -138,31 +136,34 @@ async def animals(ctx):
     try:
         msg = await bot.wait_for('message', check=check, timeout=20)
         update_val(msg.author.id, 'animals', 1)
-        res = f"🎉 كفو <@{msg.author.id}>!"
-        if str(msg.author.id) in db['married_to']:
-            partner = db['married_to'][str(msg.author.id)]
+        res = f"🎉 بطل <@{msg.author.id}> فاز بنقطة!"
+        
+        # إذا كان الفائز في فريق، يحصل زميله على نقطة أيضاً
+        if str(msg.author.id) in db['team_with']:
+            partner = db['team_with'][str(msg.author.id)]
             update_val(partner, 'animals', 1)
-            res += f" وكمان نقطة لشريكك <@{partner}>! 💞"
+            res += f" ونقطة إضافية لزميله في الفريق <@{partner}>! 🤝"
+            
         await ctx.send(res)
-    except: await ctx.send("⏰ محد عرف!")
+    except: await ctx.send("⏰ انتهى الوقت ولم يعرف أحد!")
 
-# --- الرصيد والأخطاء ---
+# --- الرصيد ---
 @bot.command(name='رصيدي')
 async def balance(ctx):
     u = ctx.author.id
-    p = f"<@{db['married_to'][str(u)]}>" if str(u) in db['married_to'] else "سنجل"
-    await ctx.reply(f"🏦 **محفظتك:**\n💵 كاش: {get_val(u, 'cash')}\n📈 أسهم: {get_val(u, 'stocks')}\n🐾 نقاط: {get_val(u, 'animals')}\n💍 الشريك: {p}")
+    t = f"<@{db['team_with'][str(u)]}>" if str(u) in db['team_with'] else "لا يوجد"
+    await ctx.reply(f"🏦 **محفظتك:**\n💵 كاش: {get_val(u, 'cash')}\n📈 أسهم: {get_val(u, 'stocks')}\n🐾 نقاط: {get_val(u, 'animals')}\n👥 الفريق: {t}")
 
 @bot.event
 async def on_command_error(ctx, error):
     if isinstance(error, commands.CommandOnCooldown):
         m, s = divmod(int(error.retry_after), 60)
-        await ctx.reply(f"⏳ ارتاح شوي! باقي **{m}د و {s}ث**.")
+        await ctx.reply(f"⏳ ارتاح قليلاً! انتظر **{m}د و {s}ث**.")
 
 @bot.event
 async def on_message(message):
     if message.author.bot: return
-    if "ميرا" in message.content: await message.reply("هلا لبيه؟")
+    if "ميرا" in message.content: await message.reply("هلا، كيف أساعدك؟")
     await bot.process_commands(message)
 
 keep_alive()
