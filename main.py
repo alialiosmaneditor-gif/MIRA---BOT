@@ -1,195 +1,141 @@
 import discord
-from discord.ext import commands, tasks
-import os, random, asyncio, time, json
-from flask import Flask
-from threading import Thread
-from datetime import datetime
+from discord.ext import commands
+import json, os, random, asyncio
 
-# --- 🌐 تشغيل السيرفر (Keep Alive) ---
-app = Flask('')
-@app.route('/')
-def home(): return "Mira Advanced System: Online 🟢"
-def run(): app.run(host='0.0.0.0', port=8080)
-def keep_alive(): Thread(target=run).start()
-
-intents = discord.Intents.default()
-intents.message_content = True 
-bot = commands.Bot(command_prefix='', intents=intents, help_command=None)
-
-# --- 📁 قاعدة البيانات ---
+# --- 📁 إعدادات القاعدة والذاكرة الدائمة ---
 DB_FILE = "database.json"
-ID_CHANNEL_STOCKS = 123456789012345678  # ⚠️ ضع هنا آيدي القناة التي ترسل فيها الأسهم
 
 def load_db():
     if os.path.exists(DB_FILE):
-        try:
-            with open(DB_FILE, "r") as f:
-                data = json.load(f)
-                keys = ['cash', 'bank', 'items', 'marry', 'stocks']
-                for k in keys:
-                    if k not in data: data[k] = {}
-                return data
-        except: return {'cash': {}, 'bank': {}, 'items': {}, 'marry': {}, 'stocks': {}}
-    return {'cash': {}, 'bank': {}, 'items': {}, 'marry': {}, 'stocks': {}}
-
-def save_db():
-    with open(DB_FILE, "w") as f:
-        json.dump(db, f, indent=4)
+        with open(DB_FILE, "r", encoding='utf-8') as f:
+            return json.load(f)
+    return {'cash': {}, 'bank': {}, 'marry': {}, 'job': {}, 'exp': {}}
 
 db = load_db()
 
-# --- ⚙️ دوال المساعدة ---
-def get_val(uid, cat, default=0):
-    uid = str(uid)
-    if uid not in db[cat]: db[cat][uid] = default
-    return db[cat][uid]
+def save_db():
+    with open(DB_FILE, "w", encoding='utf-8') as f:
+        json.dump(db, f, indent=4, ensure_ascii=False)
 
 def update_val(uid, cat, amt):
     uid = str(uid)
-    if uid not in db[cat]: db[cat][uid] = 0
-    db[cat][uid] += amt
+    if cat not in db: db[cat] = {}
+    db[cat][uid] = db[cat].get(uid, 0) + amt
     save_db()
 
-# --- 📈 نظام الأسهم المطور ---
-STOCKS = {
-    "ارامكو": {"price": 100, "trend": "➖"},
-    "تيسلا": {"price": 250, "trend": "➖"},
-    "سولانا": {"price": 150, "trend": "➖"},
-    "الراجحي": {"price": 85, "trend": "➖"}
-}
+def get_val(uid, cat, default=0):
+    return db.get(cat, {}).get(str(uid), default)
 
-@tasks.loop(minutes=10)
-async def stock_market_task():
-    channel = bot.get_channel(ID_CHANNEL_STOCKS)
-    if not channel: return
+# --- ⚙️ إعدادات البوت ---
+intents = discord.Intents.default()
+intents.message_content = True
+bot = commands.Bot(command_prefix='!', intents=intents, help_command=None)
 
-    update_text = "🔔 **تحديث مباشر لسوق الأسهم** 📈\n"
-    update_text += f"📅 `{datetime.now().strftime('%Y-%m-%d %H:%M')}`\n"
-    update_text += "━━━━━━━━━━━━━━━━━━\n"
-
-    for s in STOCKS:
-        old_price = STOCKS[s]["price"]
-        change = random.randint(-20, 25)
-        new_price = max(10, old_price + change)
-        
-        trend = "🔼" if new_price > old_price else "🔽"
-        STOCKS[s]["price"] = new_price
-        STOCKS[s]["trend"] = trend
-        
-        update_text += f"{trend} **{s}**: `{new_price:,}` ريال\n"
-
-    update_text += "━━━━━━━━━━━━━━━━━━\n"
-    update_text += "⌛ التحديث القادم بعد: `10 دقائق`"
-    
-    await channel.send(update_text)
-
-# --- 💍 نظام الزواج بمهر ---
-@bot.command(name='تزوجني')
-async def marry(ctx, dowry: int):
+# --- 💸 أمر التحويل ---
+@bot.command(name='تحويل')
+async def transfer(ctx, amount: int):
     if not ctx.message.reference:
-        return await ctx.reply("⚠️ | لازم ترد على رسالة الشخص اللي تبي تتزوجه!")
+        return await ctx.reply("يجب الرد على رسالة الشخص الذي تريد التحويل له ⚠️")
     
-    target = (await ctx.channel.fetch_message(ctx.message.reference.message_id)).author
-    if target == ctx.author: return await ctx.reply("🙅‍♂️ | ما تقدر تتزوج نفسك!")
+    ref_msg = await ctx.channel.fetch_message(ctx.message.reference.message_id)
+    target = ref_msg.author
     
-    if str(ctx.author.id) in db['marry']: return await ctx.reply("❌ | أنت متزوج بالفعل!")
-    if str(target.id) in db['marry']: return await ctx.reply("❌ | هذا الشخص متزوج!")
+    if target == ctx.author:
+        return await ctx.reply("لا يمكنك تحويل الأموال لنفسك يا ذكي 😂")
     
-    if get_val(ctx.author.id, 'cash') < dowry:
-        return await ctx.reply(f"💸 | كاشك ما يغطي المهر المطلوب (`{dowry:,}`)")
+    if amount <= 0:
+        return await ctx.reply("يجب أن يكون المبلغ أكبر من صفر 💰")
+    
+    user_cash = get_val(ctx.author.id, 'cash')
+    if user_cash < amount:
+        return await ctx.reply("رصيدك لا يكفي لإتمام هذه العملية ❌")
 
-    await ctx.send(f"👰 **طلب زواج**\n{target.mention}، هل تقبل الزواج من {ctx.author.mention} بمهر قدره `{dowry:,}`؟\n\n*(اكتب: **أقبل** أو **أرفض** خلال 60 ثانية)*")
+    options = "الخيارات المتاحة: اكتب [متأكد] للتأكيد أو [الغاء] للتراجع ✅"
+    await ctx.reply(f"هل أنت متأكد من تحويل `{amount:,}` ريال إلى {target.mention}؟ 💸\n{options}")
 
-    def check(m): return m.author == target and m.content in ["أقبل", "أرفض"]
+    def check(m): return m.author == ctx.author and m.content in ["متأكد", "الغاء"]
+    
     try:
-        msg = await bot.wait_for('message', check=check, timeout=60.0)
-        if msg.content == "أقبل":
-            update_val(ctx.author.id, 'cash', -dowry)
-            update_val(target.id, 'cash', dowry)
-            db['marry'][str(ctx.author.id)] = str(target.id)
-            db['marry'][str(target.id)] = str(ctx.author.id)
-            save_db()
-            await ctx.send(f"🎊 **تم الزواج بنجاح!**\nألف مبروك لـ {ctx.author.mention} و {target.mention} ❤️")
+        msg = await bot.wait_for('message', check=check, timeout=30.0)
+        if msg.content == "متأكد":
+            update_val(ctx.author.id, 'cash', -amount)
+            update_val(target.id, 'cash', amount)
+            await ctx.send(f"تم تحويل `{amount:,}` ريال بنجاح إلى {target.mention} ✅")
         else:
-            await ctx.send(f"💔 | {target.mention} رفض الزواج.. معوض خير.")
+            await ctx.send("تم إلغاء عملية التحويل بنجاح 🚫")
     except asyncio.TimeoutError:
-        await ctx.send("⌛ | انتهى الوقت ولم يتم الرد.")
+        await ctx.send("انتهى وقت الاستجابة، تم إلغاء العملية ⌛")
 
-# --- 🥷 نظام الرد الشامل (زرف، تحويل، هبة) ---
-@bot.event
-async def on_message(message):
-    if message.author.bot: return
+# --- 💔 نظام الخلع ---
+@bot.command(name='خلع')
+async def divorce(ctx):
+    user_id = str(ctx.author.id)
+    if user_id not in db['marry']:
+        return await ctx.reply("أنت لست متزوجاً أصلاً لتطلب الخلع 😶")
     
-    # التعامل مع الردود
-    if message.reference:
-        ref_msg = await message.channel.fetch_message(message.reference.message_id)
-        target = ref_msg.author
-        content = message.content
+    partner_id = db['marry'][user_id]
+    options = "الخيارات المتاحة: اكتب [متأكد] لإنهاء العلاقة أو [الغاء] للتراجع ✅"
+    
+    await ctx.reply(f"هل أنت متأكد من طلب الخلع من <@{partner_id}>؟ 💔\n{options}")
 
-        if content == "زرف" and target != message.author:
-            if random.random() > 0.4:
-                stolen = random.randint(300, 1200)
-                update_val(target.id, 'cash', -stolen)
-                update_val(message.author.id, 'cash', stolen)
-                await message.reply(f"🥷 **عملية ناجحة!** زرفت من {target.mention} مبلغ `{stolen:,}` ريال.")
-            else:
-                update_val(message.author.id, 'cash', -600)
-                await message.reply("🚔 **كشفتك الشرطة!** دفعت غرامة `600` ريال.")
+    def check(m): return m.author == ctx.author and m.content in ["متأكد", "الغاء"]
+    
+    try:
+        msg = await bot.wait_for('message', check=check, timeout=30.0)
+        if msg.content == "متأكد":
+            # إزالة الطرفين من قاعدة بيانات الزواج
+            db['marry'].pop(user_id, None)
+            db['marry'].pop(str(partner_id), None)
+            save_db()
+            await ctx.send(f"تم الانفصال رسمياً.. كل شخص راح في حاله 🥀")
+        else:
+            await ctx.send("تم التراجع عن قرار الخلع، الله يصلح الحال 🤍")
+    except asyncio.TimeoutError:
+        await ctx.send("انتهى الوقت، يبدو أنك تراجعت عن قرارك ⌛")
 
-        elif content.startswith("تحويل"):
-            try:
-                amt = int(''.join(filter(str.isdigit, content)))
-                if get_val(message.author.id, 'cash') >= amt:
-                    update_val(message.author.id, 'cash', -amt)
-                    update_val(target.id, 'cash', amt)
-                    await message.reply(f"✅ تم تحويل `{amt:,}` ريال إلى {target.mention}.")
-            except: pass
-
-    await bot.process_commands(message)
-
-# --- 💳 الأوامر الأساسية ---
+# --- 📊 أمر الرصيد المنسق ---
 @bot.command(name='رصيدي')
 async def balance(ctx):
-    user_id = str(ctx.author.id)
+    user_id = ctx.author.id
     cash = get_val(user_id, 'cash')
-    bank = get_val(user_id, 'bank')
-    status = "عزوبي 🍃"
-    if user_id in db['marry']:
-        p_id = db['marry'][user_id]
-        status = f"متزوج من <@{p_id}> ❤️"
+    job = db.get('job', {}).get(str(user_id), "عاطل")
+    marry_status = f"<@{db['marry'][str(user_id)]}> ❤️" if str(user_id) in db['marry'] else "عزوبي 🍃"
 
-    msg = f"👤 **معلوماتك الاقتصادية:**\n"
-    msg += "━━━━━━━━━━━━━━\n"
+    msg = f"✨ **بطاقة الأحوال الشخصية** ✨\n"
+    msg += f"━━━━━━━━━━━━━━\n"
     msg += f"💵 **الكاش:** `{cash:,}` ريال\n"
-    msg += f"🏧 **البنك:** `{bank:,}` ريال\n"
-    msg += f"💍 **الحالة:** {status}\n"
-    msg += "━━━━━━━━━━━━━━"
+    msg += f"💼 **المهنة:** {job} 🛠️\n"
+    msg += f"💍 **الحالة:** {marry_status}\n"
+    msg += f"━━━━━━━━━━━━━━"
     await ctx.reply(msg)
 
-@bot.command(name='عمل')
-@commands.cooldown(1, 300, commands.BucketType.user)
-async def work(ctx):
-    salary = random.randint(1000, 2500)
-    update_val(ctx.author.id, 'cash', salary)
-    await ctx.reply(f"👷‍♂️ | اشتغلت وجبت راتب كفو: `{salary:,}` ريال.")
+# --- 🎰 الياناصيب المنسق ---
+@bot.command(name='ياناصيب')
+async def lottery(ctx):
+    user_id = ctx.author.id
+    price = 100000
+    if get_val(user_id, 'cash') < price:
+        return await ctx.reply(f"رصيدك لا يكفي لشراء التذكرة ❌")
 
-@bot.command(name='الأسهم')
-async def list_stocks(ctx):
-    msg = "📊 **أسعار الأسهم الحالية:**\n━━━━━━━━━━━━━━\n"
-    for s, v in STOCKS.items():
-        msg += f"{v['trend']} **{s}**: `{v['price']:,}` ريال\n"
-    msg += "━━━━━━━━━━━━━━\n💡 التحديث تلقائي كل 10 دقائق."
-    await ctx.reply(msg)
+    options = "الخيارات المتاحة: اكتب [متأكد] للشراء أو [الغاء] للتراجع ✅"
+    await ctx.reply(f"سعر التذكرة `{price:,}` ريال، هل تود المغامرة؟ 🎰\n{options}")
+
+    def check(m): return m.author == ctx.author and m.content in ["متأكد", "الغاء"]
+    try:
+        msg = await bot.wait_for('message', check=check, timeout=30.0)
+        if msg.content == "متأكد":
+            update_val(user_id, 'cash', -price)
+            if random.random() <= 0.20:
+                update_val(user_id, 'cash', 400000)
+                await ctx.send(f"مبروووك! انفجرت الجائزة بوجهك وفزت بـ `400,000` ريال 🎊")
+            else:
+                await ctx.send(f"للأسف خسرنا التذكرة، حاول مرة أخرى 💸")
+        else:
+            await ctx.send("تم إلغاء شراء التذكرة 🚫")
+    except: pass
 
 @bot.event
 async def on_ready():
-    print(f"Mira Bot is Online ✅")
-    stock_market_task.start()
+    print(f"Mira System is active as {bot.user} ✅")
 
-@bot.event
-async def on_command_error(ctx, error):
-    if isinstance(error, commands.CommandOnCooldown):
-        await ctx.reply(f"⏳ | اهدأ قليلاً! انتظر `{int(error.retry_after)}` ثانية.")
-
-keep_alive()
-bot.run(os.environ.get('TOKEN'))
+bot.run("YOUR_TOKEN_HERE")
