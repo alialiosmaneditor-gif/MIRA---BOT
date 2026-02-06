@@ -76,7 +76,7 @@ async def help_menu(ctx):
 
 # --- العمل ---
 @bot.command(name='عمل')
-@commands.cooldown(1, 600, commands.BucketType.user)
+@commands.cooldown(1, 120, commands.BucketType.user)
 async def work(ctx):
     job = random.choice(jobs)
     salary = random.randint(job['min'], job['max'])
