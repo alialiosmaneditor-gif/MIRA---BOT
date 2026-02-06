@@ -21,12 +21,12 @@ bot = commands.Bot(command_prefix='', intents=intents, help_command=None)
 
 # قاعدة البيانات (مؤقتة)
 db = {
-    'cash': {},      # رصيد الكاش
-    'animals': {},   # نقاط الحيوانات
-    'flags': {},     # نقاط الأعلام
-    'stocks': {}     # عدد الأسهم المملوكة
+    'cash': {},      
+    'animals': {},   
+    'flags': {},     
+    'stocks': {}     
 }
-stock_price = 50  # سعر السهم الحالي
+stock_price = 50 
 
 def get_val(uid, cat): return db[cat].get(str(uid), 0)
 def update_val(uid, cat, amt): 
@@ -36,37 +36,29 @@ def update_val(uid, cat, amt):
 @bot.event
 async def on_ready(): print(f'ميرا جاهزة: {bot.user}')
 
-# --- قائمة الأوامر ---
-@bot.command(name='الأوامر')
-async def help_menu(ctx):
-    embed = discord.Embed(title="🎀 دليل أوامر ميرا المكتمل 🎀", color=0xffc0cb)
-    embed.add_field(name="🎮 الألعاب:", value="• **حيوانات** | **اعلام**", inline=False)
-    embed.add_field(name="📈 سوق الأسهم:", value="• **الأسهم** (السعر) | **شراء** [العدد] | **بيع** [العدد]", inline=False)
-    embed.add_field(name="💰 الاقتصاد:", value="• **سحب** | **رصيدي** | **توب 10**", inline=False)
-    await ctx.send(embed=embed)
+# --- معالجة أخطاء الكول داون (وقت الانتظار) ---
+@bot.event
+async def on_command_error(ctx, error):
+    if isinstance(error, commands.CommandOnCooldown):
+        seconds = int(error.retry_after)
+        await ctx.reply(f"⏳ | اهدأ قليلاً! يمكنك السحب بعد **{seconds}** ثانية.")
 
-# --- نظام الأسهم (الجديد) ---
+# --- الأوامر ---
+@bot.command(name='سحب')
+@commands.cooldown(1, 120, commands.BucketType.user) # سحب واحد كل 120 ثانية
+async def withdraw(ctx):
+    update_val(ctx.author.id, 'cash', 500)
+    await ctx.reply("💸 تم سحب 500 ريال بنجاح! نراكم بعد دقيقتين.")
+
 @bot.command(name='الأسهم')
 async def show_stocks(ctx):
     await ctx.reply(f"📊 سعر السهم الحالي: **{stock_price} ريال**")
 
-@bot.command(name='شراء')
-async def buy_stocks(ctx, count: int):
-    cost = count * stock_price
-    if get_val(ctx.author.id, 'cash') < cost: return await ctx.reply("❌ كاشك ما يكفي!")
-    update_val(ctx.author.id, 'cash', -cost)
-    update_val(ctx.author.id, 'stocks', count)
-    await ctx.reply(f"🛒 اشتريت {count} سهم بنجاح!")
+@bot.command(name='رصيدي')
+async def balance(ctx):
+    uid = ctx.author.id
+    await ctx.reply(f"🏦 **رصيدك:**\n💵 كاش: {get_val(uid, 'cash')}\n📈 أسهم: {get_val(uid, 'stocks')}\n🐾 حيوانات: {get_val(uid, 'animals')}")
 
-@bot.command(name='بيع')
-async def sell_stocks(ctx, count: int):
-    if get_val(ctx.author.id, 'stocks') < count: return await ctx.reply("❌ ما تملك هالعدد من الأسهم!")
-    gain = count * stock_price
-    update_val(ctx.author.id, 'stocks', -count)
-    update_val(ctx.author.id, 'cash', gain)
-    await ctx.reply(f"💰 بعت {count} سهم واستلمت {gain} ريال!")
-
-# --- الألعاب والاقتصاد ---
 @bot.command(name='حيوانات')
 async def animals(ctx):
     char = random.choice("أبتثجحخدذرزسشصضطظعغفقكلمنهوي")
@@ -77,16 +69,6 @@ async def animals(ctx):
         update_val(msg.author.id, 'animals', 1)
         await ctx.send(f"🎉 كفو <@{msg.author.id}>!")
     except: await ctx.send("⏰ انتهى الوقت!")
-
-@bot.command(name='سحب')
-async def withdraw(ctx):
-    update_val(ctx.author.id, 'cash', 500)
-    await ctx.reply("💸 استلمت 500 ريال!")
-
-@bot.command(name='رصيدي')
-async def balance(ctx):
-    uid = ctx.author.id
-    await ctx.reply(f"🏦 **رصيدك:**\n💵 كاش: {get_val(uid, 'cash')}\n📈 أسهم: {get_val(uid, 'stocks')}\n🐾 حيوانات: {get_val(uid, 'animals')}")
 
 @bot.event
 async def on_message(message):
